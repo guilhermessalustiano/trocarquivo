@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trocarquivo</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="header-inner">
+            <div class="brand" aria-label="Trocarquivo">
+                <svg class="brand-mark" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h15m-4-4 4 4-4 4M20 17H5m4-4-4 4 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                <span class="brand-name">trocar<span>quivo</span></span>
+            </div>
+            <label class="mode-toggle">
+                <input id="mode" type="checkbox" role="switch" aria-label="Modo download" aria-controls="upload-panel download-panel">
+                <span class="upload-label">Upload</span>
+                <span class="switch-track" aria-hidden="true"></span>
+                <span class="download-label">Download</span>
+            </label>
+        </div>
+    </header>
+    <main>
+        <div class="eyebrow">Seus arquivos, sem complicação</div>
+        <section id="upload-panel" aria-labelledby="upload-title">
+            <h1 id="upload-title">Tudo começa com um arquivo.</h1>
+            <p>Selecione seus arquivos ou arraste para a área abaixo.</p>
+            <div class="card">
+                <div class="dropzone" id="dropzone">
+                    <svg class="icon" viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M24 32V10m-8 8 8-8 8 8M10 30v8a3 3 0 0 0 3 3h22a3 3 0 0 0 3-3v-8" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <strong>Arraste e solte seus arquivos aqui</strong>
+                    <p>Ou escolha do seu dispositivo. Até 50 MB por arquivo.</p>
+                    <button id="choose" type="button">Selecionar arquivos</button>
+                    <input id="files" type="file" multiple hidden>
+                </div>
+                <p id="status" role="status"></p>
+            </div>
+        </section>
+        <section id="download-panel" aria-labelledby="download-title" hidden>
+            <h1 id="download-title">Seus arquivos à mão.</h1>
+            <p>Baixe os arquivos armazenados no Trocarquivo.</p>
+            <div class="card" id="file-list" aria-live="polite">
+                <p class="empty">Nenhum arquivo por aqui ainda. Selecione Upload para adicionar.</p>
+            </div>
+        </section>
+        <p class="note">Seus arquivos ficam salvos no servidor e disponíveis mesmo após fechar esta página.</p>
+    </main>
+    <script src="script.js"></script>
+</body>
+</html>

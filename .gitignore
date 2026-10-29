@@ -1,0 +1,8 @@
+node_modules/
+uploads/*
+!uploads/.gitkeep
+.env
+
+# Configuracoes locais de implantacao
+deploy/trocarquivo.service
+deploy/nginx.conf

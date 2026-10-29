@@ -1,0 +1,20 @@
+# Copie para trocarquivo.service e substitua todos os marcadores em MAIUSCULAS.
+# Os caminhos devem ser absolutos. O .env e carregado pela propria API.
+[Unit]
+Description=Trocarquivo - API de upload e download
+After=network.target
+RequiresMountsFor=/CAMINHO/DO/PROJETO /CAMINHO/DOS/UPLOADS
+
+[Service]
+Type=exec
+User=USUARIO_DO_SERVICO
+Group=GRUPO_DO_SERVICO
+WorkingDirectory=/CAMINHO/DO/PROJETO
+ExecStartPre=/usr/bin/test -r /CAMINHO/DO/PROJETO/.env
+ExecStart=/CAMINHO/DO/NODE /CAMINHO/DO/PROJETO/server.js
+Restart=on-failure
+RestartSec=5s
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+{
+  "name": "trocarquivo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Upload e download de arquivos com persistência local",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=22" }
+}
