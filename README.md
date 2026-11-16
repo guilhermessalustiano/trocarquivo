@@ -201,6 +201,8 @@ sudo tail -n 50 /var/log/nginx/error.log
 | GET | `/api/files` | Lista os arquivos persistidos. |
 | POST | `/api/files?name=nome.txt` | Salva o corpo binário da requisição como arquivo. |
 | GET | `/api/files/:id` | Baixa o arquivo como anexo. |
+| PATCH | `/api/files/:id?name=novo-nome.txt` | Renomeia o arquivo e retorna HTTP 200 com o objeto `file` atualizado. |
+| DELETE | `/api/files/:id` | Exclui o arquivo da pasta de uploads e retorna HTTP 204. |
 
 Exemplo de envio (o endpoint recebe bytes diretamente, não multipart/form-data):
 
@@ -212,7 +214,7 @@ curl --data-binary @exemplo.txt \
 curl http://127.0.0.1:3000/api/files
 ```
 
-O envio retorna HTTP 201 com `{ "file": { "id", "name", "size", "uploadedAt", "downloadUrl" } }`. A listagem retorna `{ "files": [...] }`, com tamanho em bytes e data ISO. Use o `downloadUrl` retornado para baixar. Erros retornam `{ "error": "mensagem" }`.
+O envio retorna HTTP 201 com `{ "file": { "id", "name", "size", "uploadedAt", "downloadUrl" } }`. A listagem retorna `{ "files": [...] }`, com tamanho em bytes e data ISO. Use o `downloadUrl` retornado para baixar. Ao mudar o nome de um arquivo, passe a usar o novo `id` e o novo `downloadUrl` retornados. Erros retornam `{ "error": "mensagem" }`.
 
 ## Persistência
 
@@ -220,7 +222,7 @@ A pasta configurada em `UPLOADS_DIR` é criada automaticamente. Cada envio receb
 
 O limite é de **50 MB por arquivo**. Nomes enviados devem ter até 180 bytes UTF-8, sem caminhos, caracteres de controle ou ponto inicial. Uploads são gravados temporariamente e só aparecem na lista após a conclusão. Arquivos permanecem disponíveis após recarregar a página ou reiniciar o processo. Preserve a pasta de uploads ao atualizar o projeto; em containers, monte um volume persistente nesse caminho. Arquivos enviados ficam fora do Git.
 
-A API não possui autenticação: quem conseguir acessar o servidor pode enviar, listar e baixar arquivos. O uso padrão é local.
+A API não possui autenticação: quem conseguir acessar o servidor pode enviar, listar, baixar, renomear e excluir arquivos. O uso padrão é local.
 
 ## Verificar
 

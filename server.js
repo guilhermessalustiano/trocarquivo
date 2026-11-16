@@ -35,6 +35,14 @@ function validName(name) {
         && !/[/\\\x00-\x1f\x7f]/.test(name);
 }
 
+function readFileName(url) {
+    const name = url.searchParams.get('name');
+    if (!validName(name) || name.startsWith('.') || Buffer.byteLength(name) > 180) {
+        throw fail(400, 'Nome inválido: use até 180 bytes, sem caminhos ou ponto inicial.');
+    }
+    return name;
+}
+
 function describe(id, stat) {
     return {
         id,
@@ -72,10 +80,7 @@ function createServer({ uploadsDirectory = path.resolve(__dirname, process.env.U
                 if (request.headers['content-type'] !== 'application/octet-stream') {
                     throw fail(415, 'Envie o arquivo como application/octet-stream.');
                 }
-                const name = url.searchParams.get('name');
-                if (!validName(name) || name.startsWith('.') || Buffer.byteLength(name) > 180) {
-                    throw fail(400, 'Nome inválido: use até 180 bytes, sem caminhos ou ponto inicial.');
-                }
+                const name = readFileName(url);
                 if (Number(request.headers['content-length']) > maxFileSize) {
                     throw fail(413, 'O arquivo excede o tamanho permitido.');
                 }
@@ -100,12 +105,35 @@ function createServer({ uploadsDirectory = path.resolve(__dirname, process.env.U
                     await fs.rm(temporary, { force: true });
                 }
             }
-            if (url.pathname.startsWith('/api/files/') && request.method === 'GET') {
+            if (url.pathname.startsWith('/api/files/')) {
+                if (!['GET', 'PATCH', 'DELETE'].includes(request.method)) {
+                    response.setHeader('Allow', 'GET, PATCH, DELETE');
+                    throw fail(405, 'Método não permitido.');
+                }
                 let id;
                 try { id = decodeURIComponent(url.pathname.slice('/api/files/'.length)); }
                 catch { throw fail(400, 'Identificador inválido.'); }
                 if (!validName(id) || id.startsWith('.')) throw fail(400, 'Identificador inválido.');
-                const handle = await fs.open(path.join(uploadsDirectory, id), constants.O_RDONLY | constants.O_NOFOLLOW);
+                const filePath = path.join(uploadsDirectory, id);
+                if (request.method !== 'GET') {
+                    const stat = await fs.lstat(filePath);
+                    if (!stat.isFile()) throw fail(404, 'Arquivo não encontrado.');
+                    if (request.method === 'DELETE') {
+                        await fs.unlink(filePath);
+                        response.writeHead(204);
+                        return response.end();
+                    }
+
+                    const name = readFileName(url);
+                    const file = describe(id, stat);
+                    if (name === file.name) return json(response, 200, { file });
+
+                    const renamedId = `${randomUUID()}--${name}`;
+                    await fs.rename(filePath, path.join(uploadsDirectory, renamedId));
+                    return json(response, 200, { file: describe(renamedId, stat) });
+                }
+
+                const handle = await fs.open(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
                 try {
                     const stat = await handle.stat();
                     if (!stat.isFile()) throw fail(404, 'Arquivo não encontrado.');
@@ -128,8 +156,8 @@ function createServer({ uploadsDirectory = path.resolve(__dirname, process.env.U
                 response.writeHead(200, { 'Content-Type': type });
                 return response.end(body);
             }
-            if (url.pathname === '/api/files' || url.pathname.startsWith('/api/files/')) {
-                response.setHeader('Allow', url.pathname === '/api/files' ? 'GET, POST' : 'GET');
+            if (url.pathname === '/api/files') {
+                response.setHeader('Allow', 'GET, POST');
                 throw fail(405, 'Método não permitido.');
             }
             throw fail(404, 'Página não encontrada.');

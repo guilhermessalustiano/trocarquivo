@@ -190,7 +190,7 @@ p {
     margin: 8px 0 20px;
 }
 
-button, .download {
+button, .file-action {
     display: inline-block;
     border: 0;
     border-radius: 8px;
@@ -204,7 +204,7 @@ button, .download {
     text-decoration: none;
 }
 
-button:hover, .download:hover {
+button:hover, .file-action:hover {
     background: #106741;
 }
 
@@ -254,18 +254,41 @@ button:hover, .download:hover {
     color: #68776f;
 }
 
-.download {
-    padding: 9px 14px;
+.file-actions {
+    display: flex;
+    gap: 8px;
     flex-shrink: 0;
 }
 
-#status {
+.file-action {
+    display: inline-grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+}
+
+.file-action svg {
+    width: 20px;
+    height: 20px;
+}
+
+.file-action-delete {
+    background: #faeae8;
+    color: #a42822;
+}
+
+.file-action-delete:hover {
+    background: #f6d8d4;
+}
+
+#status, #file-status {
     color: #168356;
     font-size: 14px;
     margin-bottom: 0;
 }
 
-#status:empty {
+#status:empty, #file-status:empty {
     display: none;
 }
 

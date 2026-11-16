@@ -45,7 +45,10 @@ async function fetch(address, options = {}) {
             response.headersSent = true;
         };
         response.on('error', reject);
-        response.on('finish', () => resolve(new Response(Buffer.concat(received), { status: response.statusCode, headers })));
+        response.on('finish', () => {
+            const body = response.statusCode === 204 ? null : Buffer.concat(received);
+            resolve(new Response(body, { status: response.statusCode, headers }));
+        });
         server.emit('request', request, response);
     });
 }
@@ -126,4 +129,54 @@ test('enforces size limits on fixed and chunked uploads without keeping incomple
     assert.deepEqual(await fs.readdir(directory), []);
     assert.equal((await upload(url, 'empty.txt', '')).status, 201);
     assert.equal((await upload(url, 'exact.txt', '1234')).status, 201);
+});
+
+test('renames files on disk and deletes only the selected file', async t => {
+    const { url, directory } = await fixture(t);
+    const { file } = await (await upload(url, 'original.txt', 'first file')).json();
+    const newName = 'relatório + revisão.txt';
+    await fs.writeFile(path.join(directory, newName), 'existing file');
+
+    const response = await fetch(`${url}${file.downloadUrl}?${new URLSearchParams({ name: newName })}`, { method: 'PATCH' });
+    assert.equal(response.status, 200);
+    const { file: renamed } = await response.json();
+    assert.equal(renamed.name, newName);
+    assert.equal(renamed.uploadedAt, file.uploadedAt);
+    assert.equal(await fs.readFile(path.join(directory, renamed.id), 'utf8'), 'first file');
+    assert.equal((await fetch(`${url}${file.downloadUrl}`)).status, 404);
+    const download = await fetch(`${url}${renamed.downloadUrl}`);
+    assert.equal(await download.text(), 'first file');
+    assert.ok(download.headers.get('content-disposition').endsWith(encodeURIComponent(newName)));
+
+    assert.equal((await fetch(`${url}${renamed.downloadUrl}`, { method: 'DELETE' })).status, 204);
+    assert.equal((await fetch(`${url}${renamed.downloadUrl}`)).status, 404);
+    assert.deepEqual(await fs.readdir(directory), [newName]);
+    const manualRename = await fetch(`${url}/api/files/${encodeURIComponent(newName)}?name=manual.txt`, { method: 'PATCH' });
+    assert.equal(manualRename.status, 200);
+    const { file: manual } = await manualRename.json();
+    assert.equal(manual.name, 'manual.txt');
+    assert.equal(await fs.readFile(path.join(directory, manual.id), 'utf8'), 'existing file');
+    const { files } = await (await fetch(`${url}/api/files`)).json();
+    assert.deepEqual(files, [manual]);
+});
+
+test('rejects rename and delete for invalid paths, hidden files, directories and symlinks', async t => {
+    const { url, directory, root } = await fixture(t);
+    const secret = path.join(root, 'secret.txt');
+    await fs.writeFile(secret, 'private');
+    await fs.symlink(secret, path.join(directory, 'link.txt'));
+    await fs.mkdir(path.join(directory, 'folder'));
+    await fs.writeFile(path.join(directory, '.hidden'), 'hidden');
+    const { file } = await (await upload(url, 'file.txt', 'original')).json();
+
+    for (const id of ['..%2Fsecret.txt', '.hidden', 'folder', 'link.txt']) {
+        const expected = id === 'folder' || id === 'link.txt' ? 404 : 400;
+        assert.equal((await fetch(`${url}/api/files/${id}?name=new.txt`, { method: 'PATCH' })).status, expected);
+        assert.equal((await fetch(`${url}/api/files/${id}`, { method: 'DELETE' })).status, expected);
+    }
+    const response = await fetch(`${url}${file.downloadUrl}?name=..%2Fsecret.txt`, { method: 'PATCH' });
+    assert.equal(response.status, 400);
+    assert.equal(await fs.readFile(secret, 'utf8'), 'private');
+    assert.equal(await fs.readlink(path.join(directory, 'link.txt')), secret);
+    assert.equal(await fs.readFile(path.join(directory, file.id), 'utf8'), 'original');
 });
