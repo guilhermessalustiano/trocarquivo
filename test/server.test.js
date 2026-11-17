@@ -98,15 +98,11 @@ test('lists files, persists binary uploads across restart, preserves duplicate n
     assert.deepEqual(Buffer.from(await download.arrayBuffer()), content);
 });
 
-test('rejects invalid paths, hidden files, symbolic links and unsupported methods', async t => {
-    const { url, directory, root } = await fixture(t);
+test('rejects invalid paths, hidden files and unsupported methods', async t => {
+    const { url } = await fixture(t);
     for (const name of ['../secret', 'folder/file', 'folder\\file', '.hidden', 'a\nfile', 'a'.repeat(181)]) {
         assert.equal((await upload(url, name, 'data')).status, 400);
     }
-    const secret = path.join(root, 'secret.txt');
-    await fs.writeFile(secret, 'private');
-    await fs.symlink(secret, path.join(directory, 'link.txt'));
-    assert.equal((await fetch(`${url}/api/files/link.txt`)).status, 404);
     assert.equal((await fetch(`${url}/api/files/..%2Fsecret.txt`)).status, 400);
     assert.equal((await fetch(`${url}/api/files/.gitkeep`)).status, 400);
     assert.equal((await fetch(`${url}/server.js`)).status, 404);
@@ -160,23 +156,60 @@ test('renames files on disk and deletes only the selected file', async t => {
     assert.deepEqual(files, [manual]);
 });
 
-test('rejects rename and delete for invalid paths, hidden files, directories and symlinks', async t => {
-    const { url, directory, root } = await fixture(t);
-    const secret = path.join(root, 'secret.txt');
-    await fs.writeFile(secret, 'private');
-    await fs.symlink(secret, path.join(directory, 'link.txt'));
+test('rejects rename and delete for invalid paths, hidden files and directories', async t => {
+    const { url, directory } = await fixture(t);
     await fs.mkdir(path.join(directory, 'folder'));
     await fs.writeFile(path.join(directory, '.hidden'), 'hidden');
     const { file } = await (await upload(url, 'file.txt', 'original')).json();
 
-    for (const id of ['..%2Fsecret.txt', '.hidden', 'folder', 'link.txt']) {
-        const expected = id === 'folder' || id === 'link.txt' ? 404 : 400;
+    for (const id of ['..%2Fsecret.txt', '.hidden', 'folder']) {
+        const expected = id === 'folder' ? 404 : 400;
         assert.equal((await fetch(`${url}/api/files/${id}?name=new.txt`, { method: 'PATCH' })).status, expected);
         assert.equal((await fetch(`${url}/api/files/${id}`, { method: 'DELETE' })).status, expected);
     }
     const response = await fetch(`${url}${file.downloadUrl}?name=..%2Fsecret.txt`, { method: 'PATCH' });
     assert.equal(response.status, 400);
+    assert.equal(await fs.readFile(path.join(directory, file.id), 'utf8'), 'original');
+});
+
+test('ignores symbolic links in all file operations', async t => {
+    const { url, directory, root } = await fixture(t);
+    const secret = path.join(root, 'secret.txt');
+    const link = path.join(directory, 'link.txt');
+    await fs.writeFile(secret, 'private');
+    try {
+        await fs.symlink(secret, link, 'file');
+    } catch (error) {
+        if (process.platform !== 'win32' || error.code !== 'EPERM') throw error;
+        return t.skip('Windows requires Developer Mode or symlink privileges');
+    }
+
+    assert.deepEqual(await (await fetch(`${url}/api/files`)).json(), { files: [] });
+    for (const method of ['GET', 'PATCH', 'DELETE']) {
+        assert.equal((await fetch(`${url}/api/files/link.txt?name=new.txt`, { method })).status, 404);
+    }
     assert.equal(await fs.readFile(secret, 'utf8'), 'private');
-    assert.equal(await fs.readlink(path.join(directory, 'link.txt')), secret);
+    assert.equal(await fs.readlink(link), secret);
+});
+
+test('rejects Windows file names that resolve to streams, devices or aliases', {
+    skip: process.platform !== 'win32'
+}, async t => {
+    const { url, directory } = await fixture(t);
+    const { file } = await (await upload(url, 'arquivo.txt', 'original')).json();
+    for (const name of ['arquivo.txt:fluxo', 'a<b', 'a>b', 'a"b', 'a|b', 'a?b', 'a*b',
+        'NUL.txt', 'com¹.txt', 'LPT9 .txt', 'CONIN$', 'arquivo.txt.', 'arquivo.txt ']) {
+        const query = new URLSearchParams({ name });
+        assert.equal((await upload(url, name, 'data')).status, 400, name);
+        assert.equal((await fetch(`${url}${file.downloadUrl}?${query}`, { method: 'PATCH' })).status, 400, name);
+    }
+
+    for (const id of [`${file.id}:fluxo`, `${file.id}.`, `${file.id} `, 'NUL.txt']) {
+        const fileUrl = `${url}/api/files/${encodeURIComponent(id)}?name=new.txt`;
+        for (const method of ['GET', 'PATCH', 'DELETE']) {
+            assert.equal((await fetch(fileUrl, { method })).status, 400, id);
+        }
+    }
+    assert.deepEqual(await fs.readdir(directory), [file.id]);
     assert.equal(await fs.readFile(path.join(directory, file.id), 'utf8'), 'original');
 });

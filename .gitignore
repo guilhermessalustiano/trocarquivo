@@ -6,3 +6,5 @@ uploads/*
 # Configuracoes locais de implantacao
 deploy/trocarquivo.service
 deploy/nginx.conf
+deploy/trocarquivo.exe
+deploy/trocarquivo.xml

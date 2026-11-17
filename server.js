@@ -13,6 +13,7 @@ try {
 }
 
 const publicDirectory = path.join(__dirname, 'public');
+const windows = process.platform === 'win32';
 const generatedPrefix = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}--/i;
 const staticFiles = new Map([
     ['/', ['index.html', 'text/html; charset=utf-8']],
@@ -31,14 +32,22 @@ function fail(status, message) {
 }
 
 function validName(name) {
-    return typeof name === 'string' && name.length > 0 && name !== '.' && name !== '..'
+    return typeof name === 'string' && name.length > 0 && !name.startsWith('.')
         && !/[/\\\x00-\x1f\x7f]/.test(name);
+}
+
+function validWindowsName(name) {
+    return !/[<>:"|?*]|[ .]$/.test(name)
+        && !/^(CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|(?:COM|LPT)[1-9¹²³]) *(?:\.|$)/i.test(name);
 }
 
 function readFileName(url) {
     const name = url.searchParams.get('name');
-    if (!validName(name) || name.startsWith('.') || Buffer.byteLength(name) > 180) {
+    if (!validName(name) || Buffer.byteLength(name) > 180) {
         throw fail(400, 'Nome inválido: use até 180 bytes, sem caminhos ou ponto inicial.');
+    }
+    if (windows && !validWindowsName(name)) {
+        throw fail(400, 'Nome inválido no Windows: evite caracteres e nomes reservados ou ponto ou espaço no final.');
     }
     return name;
 }
@@ -65,9 +74,10 @@ function createServer({ uploadsDirectory = path.resolve(__dirname, process.env.U
                 const entries = await fs.readdir(uploadsDirectory, { withFileTypes: true });
                 const files = [];
                 for (const entry of entries) {
-                    if (!entry.isFile() || entry.name.startsWith('.')) continue;
+                    if (!entry.isFile() || entry.name.startsWith('.') || (windows && !validWindowsName(entry.name))) continue;
                     try {
-                        files.push(describe(entry.name, await fs.stat(path.join(uploadsDirectory, entry.name))));
+                        const stat = await fs.lstat(path.join(uploadsDirectory, entry.name));
+                        if (stat.isFile()) files.push(describe(entry.name, stat));
                     } catch (error) {
                         if (error.code !== 'ENOENT') throw error;
                     }
@@ -113,7 +123,7 @@ function createServer({ uploadsDirectory = path.resolve(__dirname, process.env.U
                 let id;
                 try { id = decodeURIComponent(url.pathname.slice('/api/files/'.length)); }
                 catch { throw fail(400, 'Identificador inválido.'); }
-                if (!validName(id) || id.startsWith('.')) throw fail(400, 'Identificador inválido.');
+                if (!validName(id) || (windows && !validWindowsName(id))) throw fail(400, 'Identificador inválido.');
                 const filePath = path.join(uploadsDirectory, id);
                 if (request.method !== 'GET') {
                     const stat = await fs.lstat(filePath);
@@ -133,15 +143,20 @@ function createServer({ uploadsDirectory = path.resolve(__dirname, process.env.U
                     return json(response, 200, { file: describe(renamedId, stat) });
                 }
 
-                const handle = await fs.open(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
+                const entry = await fs.lstat(filePath, { bigint: true });
+                if (!entry.isFile()) throw fail(404, 'Arquivo não encontrado.');
+                const handle = await fs.open(filePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
                 try {
-                    const stat = await handle.stat();
-                    if (!stat.isFile()) throw fail(404, 'Arquivo não encontrado.');
-                    const name = describe(id, stat).name;
+                    // Windows lacks O_NOFOLLOW. Verify that open returned the same file as lstat.
+                    const stat = await handle.stat({ bigint: true });
+                    if (!stat.isFile() || stat.dev !== entry.dev || stat.ino !== entry.ino) {
+                        throw fail(404, 'Arquivo não encontrado.');
+                    }
+                    const name = id.replace(generatedPrefix, '');
                     const encoded = encodeURIComponent(name).replace(/['()*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
                     response.writeHead(200, {
                         'Content-Type': 'application/octet-stream',
-                        'Content-Length': stat.size,
+                        'Content-Length': stat.size.toString(),
                         'Content-Disposition': `attachment; filename="download"; filename*=UTF-8''${encoded}`
                     });
                     await pipeline(handle.createReadStream({ autoClose: false }), response);
